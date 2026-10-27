@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  aegis-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegis-mcp-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - AEGIS_GATEWAY_TOKEN=${AEGIS_GATEWAY_TOKEN:-aegis_super_secret_bearer_token_2026_demo}
+      - AEGIS_ENV=${AEGIS_ENV:-production}
+      - AEGIS_HOST=0.0.0.0
+      - AEGIS_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - ENABLE_PII_REDACTION=true
+      - ENABLE_INJECTION_SHIELD=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
