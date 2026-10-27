@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from security.config import get_settings
 from services.audit_logger import get_audit_log_buffer
+from services.db_client import get_supabase_client
 
 logger = logging.getLogger("aegis.routers.dashboard")
 
@@ -23,8 +24,20 @@ router = APIRouter(tags=["Security Console"])
 
 @router.get("/api/stats", summary="Get Gateway Security Telemetry")
 async def get_gateway_stats() -> Dict[str, Any]:
-    """Calculate live security telemetry metrics from the audit buffer."""
-    logs = get_audit_log_buffer()
+    """Calculate live security telemetry metrics from Supabase mcp_audit_logs (or memory fallback)."""
+    logs: List[Dict[str, Any]] = []
+    client = await get_supabase_client()
+    if client:
+        try:
+            res = await client.table("mcp_audit_logs").select("status").execute()
+            if res.data is not None and len(res.data) > 0:
+                logs = res.data
+        except Exception as exc:
+            logger.warning("Failed to fetch stats from Supabase (%s). Using in-memory buffer.", str(exc))
+
+    if not logs:
+        logs = get_audit_log_buffer()
+
     total = len(logs)
     blocked = sum(1 for log in logs if log.get("status") == "BLOCKED_POLICY")
     sanitized = sum(1 for log in logs if log.get("status") == "SANITIZED_PII")
@@ -46,7 +59,16 @@ async def get_gateway_stats() -> Dict[str, Any]:
 
 @router.get("/api/audit-logs", summary="Get Recent Security Audit Logs")
 async def get_recent_audit_logs() -> List[Dict[str, Any]]:
-    """Retrieve up to 50 most recent immutable audit log records."""
+    """Retrieve up to 50 most recent immutable audit log records from Supabase (or memory fallback)."""
+    client = await get_supabase_client()
+    if client:
+        try:
+            res = await client.table("mcp_audit_logs").select("*").order("timestamp", desc=True).limit(50).execute()
+            if res.data is not None and len(res.data) > 0:
+                return res.data
+        except Exception as exc:
+            logger.warning("Failed to fetch audit logs from Supabase (%s). Using in-memory buffer.", str(exc))
+
     logs = get_audit_log_buffer()
     return list(reversed(logs[-50:]))
 

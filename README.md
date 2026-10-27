@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/MCP-2024--11--05-7928CA?style=for-the-badge&logo=anthropic&logoColor=white" alt="Model Context Protocol" />
   <img src="https://img.shields.io/badge/Presidio-DLP%20Engine-0078D4?style=for-the-badge&logo=microsoft&logoColor=white" alt="Microsoft Presidio" />
   <img src="https://img.shields.io/badge/Supabase-PostgreSQL%20RBAC-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
+  <img src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions" />
   <img src="https://img.shields.io/badge/Security-Zero--Trust-FF0055?style=for-the-badge&logo=securityscorecard&logoColor=white" alt="Zero-Trust" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License" />
 </p>
@@ -19,14 +20,16 @@
 - [High-Level Architecture](#-high-level-architecture)
   - [Forward Path vs. Return Path](#forward-path-vs-return-path)
   - [End-to-End Sequence Diagram](#end-to-end-sequence-diagram)
+- [Zero-Trust Reverse Proxy & Upstream Forwarding](#-zero-trust-reverse-proxy--upstream-forwarding)
 - [Defense-in-Depth Security Layers](#-defense-in-depth-security-layers)
   - [1. Constant-Time Authentication](#1-constant-time-authentication)
   - [2. Strict Schema Validation](#2-strict-schema-validation-pydantic-v2)
   - [3. Heuristic Shell Injection Shield](#3-heuristic-shell-injection-shield)
-  - [4. Supabase PostgreSQL RBAC](#4-supabase-postgresql-rbac)
-  - [5. Microsoft Presidio Return-Path DLP](#5-microsoft-presidio-return-path-dlp)
-  - [6. Immutable Forensics & Audit Logging](#6-immutable-forensics--audit-logging)
-  - [7. Zero-Information Leakage](#7-zero-information-leakage)
+  - [4. Supabase PostgreSQL RBAC & Tool Filtering](#4-supabase-postgresql-rbac--tool-filtering)
+  - [5. Microsoft Presidio Return-Path DLP (PII + Secrets)](#5-microsoft-presidio-return-path-dlp-pii--secrets)
+  - [6. Sliding-Window Rate Limiting & DoS Shield](#6-sliding-window-rate-limiting--dos-shield)
+  - [7. Immutable Forensics & Audit Logging](#7-immutable-forensics--audit-logging)
+  - [8. Zero-Information Leakage](#8-zero-information-leakage)
 - [Interactive Security Command Center](#-interactive-security-command-center)
 - [Quickstart & Installation](#-quickstart--installation)
   - [1. Clone & Dependencies](#1-clone--dependencies)

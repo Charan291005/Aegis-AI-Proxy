@@ -21,21 +21,25 @@ from security.config import get_settings
 
 logger = logging.getLogger("aegis.services.dlp")
 
-# Target PII entities to sanitize on the return path
+# Target PII & Secret entities to sanitize on the return path
 TARGET_ENTITIES: List[str] = [
     "CREDIT_CARD",
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
+    "API_KEY",
+    "JWT_TOKEN",
+    "CRYPTO_PRIVATE_KEY",
 ]
 
 REDACTION_MARKER: str = "<REDACTED_PII>"
+SECRET_MARKER: str = "<REDACTED_SECRET>"
 
 
 def _build_analyzer_engine() -> AnalyzerEngine:
     """Initialize and configure the Presidio AnalyzerEngine.
 
-    Applies custom pattern recognizers to supplement default spaCy/phonenumber checks
-    and guarantee high recall on formatted card numbers and phone formats.
+    Applies custom pattern recognizers to supplement default checks and guarantee
+    high recall on formatted card numbers, phone formats, emails, and sensitive API secrets.
     """
     try:
         # Explicitly configure small English NLP pipeline for fast memory-efficient execution
@@ -91,7 +95,46 @@ def _build_analyzer_engine() -> AnalyzerEngine:
     )
     analyzer.registry.add_recognizer(email_recognizer)
 
-    logger.info("Presidio AnalyzerEngine initialized with enhanced PII recognizers.")
+    # High-risk Secrets Recognizers: OpenAI keys, AWS Access Keys, GitHub PATs
+    api_key_patterns = [
+        Pattern(name="openai_key_regex", regex=r"\b(?:sk-[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9_-]{20,})\b", score=0.95),
+        Pattern(name="aws_access_key_regex", regex=r"\bAKIA[0-9A-Z]{16}\b", score=0.95),
+        Pattern(name="github_pat_regex", regex=r"\b(?:ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{30,})\b", score=0.95),
+    ]
+    api_key_recognizer = PatternRecognizer(
+        supported_entity="API_KEY",
+        patterns=api_key_patterns,
+        supported_language="en",
+    )
+    analyzer.registry.add_recognizer(api_key_recognizer)
+
+    # JSON Web Token (JWT) Recognizer
+    jwt_pattern = Pattern(
+        name="jwt_token_regex",
+        regex=r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b",
+        score=0.90,
+    )
+    jwt_recognizer = PatternRecognizer(
+        supported_entity="JWT_TOKEN",
+        patterns=[jwt_pattern],
+        supported_language="en",
+    )
+    analyzer.registry.add_recognizer(jwt_recognizer)
+
+    # Asymmetric Cryptographic Private Keys Recognizer
+    private_key_pattern = Pattern(
+        name="private_key_header_regex",
+        regex=r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----",
+        score=0.99,
+    )
+    private_key_recognizer = PatternRecognizer(
+        supported_entity="CRYPTO_PRIVATE_KEY",
+        patterns=[private_key_pattern],
+        supported_language="en",
+    )
+    analyzer.registry.add_recognizer(private_key_recognizer)
+
+    logger.info("Presidio AnalyzerEngine initialized with enhanced PII & Secrets recognizers.")
     return analyzer
 
 
@@ -105,6 +148,9 @@ _ANONYMIZER_OPERATORS: Dict[str, OperatorConfig] = {
     "CREDIT_CARD": OperatorConfig("replace", {"new_value": REDACTION_MARKER}),
     "EMAIL_ADDRESS": OperatorConfig("replace", {"new_value": REDACTION_MARKER}),
     "PHONE_NUMBER": OperatorConfig("replace", {"new_value": REDACTION_MARKER}),
+    "API_KEY": OperatorConfig("replace", {"new_value": SECRET_MARKER}),
+    "JWT_TOKEN": OperatorConfig("replace", {"new_value": SECRET_MARKER}),
+    "CRYPTO_PRIVATE_KEY": OperatorConfig("replace", {"new_value": SECRET_MARKER}),
 }
 
 

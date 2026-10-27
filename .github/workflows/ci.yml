@@ -1,0 +1,39 @@
+name: Aegis CI / Security Verification
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run Pytest & Adversarial Fuzzing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        python -m spacy download en_core_web_sm
+
+    - name: Run Pytest Security Integration Suite
+      run: |
+        python -m pytest -v tests/test_gateway.py
+
+    - name: Run Adversarial Mutation Fuzzing Engine
+      run: |
+        python tests/adversarial/fuzz_gateway.py

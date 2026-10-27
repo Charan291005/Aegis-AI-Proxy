@@ -172,8 +172,59 @@ class MCPError(StrictBaseModel):
     )
 
 
+class ToolInputSchema(StrictBaseModel):
+    """Schema definition for tool input arguments."""
+
+    type: str = "object"
+    properties: Optional[Dict[str, Any]] = None
+    required: Optional[List[str]] = None
+
+
+class MCPToolDefinition(StrictBaseModel):
+    """MCP Tool Capability definition."""
+
+    name: str
+    description: Optional[str] = None
+    inputSchema: Dict[str, Any] = Field(default_factory=lambda: {"type": "object"})
+
+
+class ToolsListResult(StrictBaseModel):
+    """Result payload for tools/list method."""
+
+    tools: List[MCPToolDefinition] = Field(default_factory=list)
+
+
+class InitializeResult(StrictBaseModel):
+    """Result payload for initialize handshake."""
+
+    protocolVersion: str = "2024-11-05"
+    capabilities: Dict[str, Any] = Field(default_factory=lambda: {"tools": {"listChanged": True}})
+    serverInfo: Dict[str, str] = Field(default_factory=lambda: {"name": "aegis-mcp-gateway", "version": "1.0.0"})
+
+
+class MCPGenericRequest(StrictBaseModel):
+    """General MCP JSON-RPC 2.0 Request Envelope supporting all MCP methods."""
+
+    jsonrpc: Literal["2.0"] = Field(
+        default="2.0",
+        description="JSON-RPC protocol version specifier.",
+    )
+    id: Optional[Union[str, int]] = Field(
+        default=None,
+        description="Request correlation ID.",
+    )
+    method: str = Field(
+        ...,
+        description="Method name (e.g., 'tools/call', 'tools/list', 'initialize', 'ping').",
+    )
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Parameters payload for the method.",
+    )
+
+
 class MCPResponse(StrictBaseModel):
-    """Full MCP Response Envelope for Tool Execution.
+    """Full MCP Response Envelope for Tool Execution & Protocol Operations.
 
     Guarantees strict bidirectional conformance with JSON-RPC 2.0 standard.
     """
@@ -182,13 +233,13 @@ class MCPResponse(StrictBaseModel):
         default="2.0",
         description="JSON-RPC protocol version specifier.",
     )
-    id: Union[str, int] = Field(
-        ...,
+    id: Optional[Union[str, int]] = Field(
+        default=None,
         description="Matching correlation ID from the initial tool request.",
     )
-    result: Optional[CallToolResult] = Field(
+    result: Optional[Union[CallToolResult, ToolsListResult, InitializeResult, Dict[str, Any]]] = Field(
         default=None,
-        description="Populated upon successful tool execution.",
+        description="Populated upon successful execution.",
     )
     error: Optional[MCPError] = Field(
         default=None,

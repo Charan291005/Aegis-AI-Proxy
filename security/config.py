@@ -39,12 +39,22 @@ class Settings(BaseSettings):
 
     @property
     def effective_supabase_key(self) -> Optional[str]:
-        """Return supabase_key or supabase_service_role_key."""
-        return self.supabase_key or self.supabase_service_role_key
+        """Prioritize service_role key for backend proxy operations; fallback to publishable/anon key."""
+        return self.supabase_service_role_key or self.supabase_key
+
+    # Upstream MCP Server Forwarding (Reverse Proxy target)
+    upstream_mcp_url: Optional[str] = None
+    upstream_timeout_seconds: float = 30.0
+
+    # Rate Limiting & DoS Protection
+    rate_limit_per_minute: int = 120
+    enable_rate_limiting: bool = True
 
     # Defense In Depth Toggles
     enable_pii_redaction: bool = True
+    enable_secrets_redaction: bool = True
     enable_injection_shield: bool = True
+    allowed_origins: str = "*"
 
     model_config = SettingsConfigDict(
         env_file=".env",

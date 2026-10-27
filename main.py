@@ -35,9 +35,12 @@ from middleware.interceptor import (
     GENERIC_FORBIDDEN_RESPONSE,
     ZeroTrustInterceptorMiddleware,
 )
+from middleware.rate_limiter import RateLimiterMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 from routers.dashboard_router import router as dashboard_router
 from routers.mcp_router import router as mcp_router
 from security.config import get_settings
+from services.mcp_proxy_service import close_proxy_http_client
 
 # ------------------------------------------------------------------------------
 # Logging Infrastructure Configuration
@@ -59,10 +62,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize security subsystems and warm up DLP models at startup."""
     logger.info("Initializing Aegis Zero-Trust MCP Gateway...")
     logger.info("Environment: %s", settings.aegis_env)
-    logger.info("PII Redaction: %s", "ENABLED" if settings.enable_pii_redaction else "DISABLED")
+    logger.info("PII & Secrets Redaction: %s", "ENABLED" if settings.enable_pii_redaction else "DISABLED")
     logger.info("Injection Shield: %s", "ENABLED" if settings.enable_injection_shield else "DISABLED")
+    logger.info("Rate Limiting: %s (%d req/min)", "ENABLED" if settings.enable_rate_limiting else "DISABLED", settings.rate_limit_per_minute)
+    if settings.upstream_mcp_url:
+        logger.info("Reverse Proxy Upstream: %s", settings.upstream_mcp_url)
+    else:
+        logger.info("Mode: Standalone MCP Engine (No external upstream configured)")
     logger.info("RBAC Supabase Endpoint: %s", settings.supabase_url)
     yield
+    await close_proxy_http_client()
     logger.info("Aegis Zero-Trust MCP Gateway shutting down cleanly.")
 
 
@@ -86,18 +95,25 @@ app = FastAPI(
 bearer_scheme = HTTPBearer(auto_error=False)
 
 # ------------------------------------------------------------------------------
-# Middleware Pipeline
+# Middleware Pipeline (Executed in reverse order of addition)
 # ------------------------------------------------------------------------------
-# 1. CORS: Strict origin filtering
+# 1. Security Headers: Hardening against MIME sniffing, clickjacking, and XSS
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. Rate Limiting: Sliding window protection against DoS and runaway agent loops
+app.add_middleware(RateLimiterMiddleware)
+
+# 3. CORS: Configurable origin filtering
+origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to specific trusted origins in production
-    allow_credentials=True,
+    allow_origins=origins if origins else ["*"],
+    allow_credentials=True if origins != ["*"] else False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# 2. Zero-Trust Interceptor Middleware (Forward auth, injection checks & Return DLP)
+# 4. Zero-Trust Interceptor Middleware (Forward auth, injection checks & Return DLP)
 app.add_middleware(ZeroTrustInterceptorMiddleware)
 
 

@@ -239,3 +239,82 @@ def test_db_client_verify_tool_permission_unit():
         assert await verify_tool_permission("sess-unauthorized-999", "read_file") is False
 
     asyncio.run(run_checks())
+
+
+def test_secrets_redaction_api_keys_and_tokens():
+    """Verify return-path DLP automatically masks OpenAI keys and AWS tokens as <REDACTED_SECRET>."""
+    from services.dlp_engine import sanitize_text
+
+    secret_text = (
+        "Server config: OpenAI Key is sk-abcdef1234567890abcdef1234567890, "
+        "AWS Access Key is AKIAIOSFODNN7EXAMPLE, and contact is admin@aegis.corp."
+    )
+    sanitized = sanitize_text(secret_text)
+    assert "sk-abcdef1234567890" not in sanitized
+    assert "AKIAIOSFODNN7EXAMPLE" not in sanitized
+    assert "<REDACTED_SECRET>" in sanitized
+    assert "<REDACTED_PII>" in sanitized
+
+
+def test_tools_list_rbac_filtering_via_dispatch():
+    """Verify that tools/list endpoint dynamically filters tools based on the caller's RBAC role."""
+    # 1. Operator session: should see query_database and read_file
+    headers_operator = dict(VALID_HEADERS)
+    headers_operator["X-Session-ID"] = "sess-operator-002"
+
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "list-1",
+        "method": "tools/list",
+        "params": {},
+    }
+    resp = client.post("/mcp/dispatch", json=payload, headers=headers_operator)
+    assert resp.status_code == 200
+    tools = resp.json()["result"]["tools"]
+    tool_names = [t["name"] for t in tools]
+    assert "query_database" in tool_names
+    assert "read_file" in tool_names
+
+    # 2. Unauthorized session: should see 0 tools
+    headers_unauth = dict(VALID_HEADERS)
+    headers_unauth["X-Session-ID"] = "sess-unauthorized-999"
+    resp_unauth = client.post("/mcp/dispatch", json=payload, headers=headers_unauth)
+    assert resp_unauth.status_code == 200
+    assert len(resp_unauth.json()["result"]["tools"]) == 0
+
+
+def test_initialize_handshake():
+    """Verify official MCP 2024-11-05 initialize handshake response."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "init-1",
+        "method": "initialize",
+        "params": {},
+    }
+    resp = client.post("/mcp/dispatch", json=payload, headers=VALID_HEADERS)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["protocolVersion"] == "2024-11-05"
+    assert "tools" in result["capabilities"]
+    assert result["serverInfo"]["name"] == "aegis-mcp-gateway"
+
+
+def test_security_and_rate_limit_headers():
+    """Verify standard security headers and rate-limiting quota headers are injected."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.headers.get("X-Content-Type-Options") == "nosniff"
+    assert response.headers.get("X-Frame-Options") == "DENY"
+
+    # Rate limiting headers on MCP endpoints
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "probe-rl",
+        "method": "ping",
+        "params": {},
+    }
+    mcp_resp = client.post("/mcp/dispatch", json=payload, headers=VALID_HEADERS)
+    assert mcp_resp.status_code == 200
+    assert "X-RateLimit-Limit" in mcp_resp.headers
+    assert "X-RateLimit-Remaining" in mcp_resp.headers
+
